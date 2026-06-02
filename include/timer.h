@@ -5,13 +5,12 @@
 
 class Timer {
 public:
-  // advance by `cycles` T-cycles; returns true if TIMA overflowed
   bool tick(int cycles) {
     bool overflow = false;
     for (int i = 0; i < cycles; i++) {
       u16 before = div;
-      div++;                  // 16-bit counter, every cycle
-      if (tac & 0x04) {       // timer enabled?
+      div++;                  
+      if (tac & 0x04) {       
         u16 mask = timaMask();
         if ((before & mask) && !(div & mask)) { // falling edge of selected bit
           if (++tima == 0) {                     // TIMA wrapped past 0xFF

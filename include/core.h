@@ -132,7 +132,7 @@ public:
     }
 
     // LD dd, d16
-    for (int opcode = 0x01; opcode <= 0x31; opcode += 0x10) {
+    for (int opcode = 0x01; opcode <= 0x31; opcode += 16) {
       opcodeTable[opcode] = &op_ld_dd_d16;
     }
 
