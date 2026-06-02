@@ -13,7 +13,7 @@ bool Bus::loadRom(const char *path) {
 
 void Bus::write(u16 addr, u8 value) {
   memory[addr] = value;
-  if (addr == 0xFF02 && value == 0x81) { 
+  if (addr == 0xFF02 && value == 0x81) {
     std::putchar((char)memory[0xFF01]);
     std::fflush(stdout);
   }

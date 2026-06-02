@@ -140,13 +140,13 @@ public:
     }
 
     // PUSH dd
-    for (int opcode = 0xC5; opcode <= 0xD5; opcode += 0x10) {
-      opcodeTable[opcode] = &op_push_rr; // PUSH dd
+    for (int opcode = 0xC5; opcode <= 0xF5; opcode += 0x10) {
+      opcodeTable[opcode] = &op_push_rr;
     }
 
     // POP dd
-    for (int opcode = 0xD1; opcode <= 0xE1; opcode += 0x10) {
-      opcodeTable[opcode] = &op_pop_rr; // POP dd
+    for (int opcode = 0xC1; opcode <= 0xF1; opcode += 0x10) {
+      opcodeTable[opcode] = &op_pop_rr;
     }
 
     opcodeTable[0xE8] = &op_add_sp_r8; // ADD SP, r8
@@ -210,6 +210,29 @@ public:
   }
 
   u8 step() {
+    // Interrupt servicing: IF (0xFF0F) & IE (0xFFFF), bits 0-4
+    u8 IF = bus->read(0xFF0F);
+    u8 IE = bus->read(0xFFFF);
+    u8 pending = IF & IE & 0x1F;
+
+    if (pending) {
+      halted = false; // a pending interrupt wakes HALT regardless of IME
+      if (ime) {
+        ime = false;
+        int bit = 0;
+        while (!((pending >> bit) & 1))
+          bit++;
+        bus->write(0xFF0F, IF & ~(1 << bit)); // acknowledge
+        push16(regs.pc);
+        static const u16 vectors[5] = {0x40, 0x48, 0x50, 0x58, 0x60};
+        regs.pc = vectors[bit];
+        return 20;
+      }
+    }
+
+    if (halted)
+      return 4; // wait for an interrupt
+
     u8 opcode = fetch8();
     return opcodeTable[opcode](*this, opcode);
   }
@@ -454,7 +477,7 @@ private:
     case 2:
       return regs.hl();
     case 3:
-      return regs.sp;
+      return regs.af(); // PUSH/POP use AF here, not SP
     default:
       return 0; // invalid index, return 0
     }
@@ -472,7 +495,7 @@ private:
       regs.hl(value);
       break;
     case 3:
-      regs.sp = value;
+      regs.af(value); // PUSH/POP use AF here, not SP
       break;
     default:
       break; // invalid index, do nothing
@@ -509,6 +532,7 @@ private:
     regs.FlagZ(result == 0);
     regs.FlagN(false);
     regs.FlagH(false);
+    regs.FlagC(carry);
     return result;
   }
 
@@ -518,6 +542,7 @@ private:
     regs.FlagZ(result == 0);
     regs.FlagN(false);
     regs.FlagH(false);
+    regs.FlagC(carry);
     return result;
   }
 
@@ -527,6 +552,7 @@ private:
     regs.FlagZ(result == 0);
     regs.FlagN(false);
     regs.FlagH(false);
+    regs.FlagC(carry);
     return result;
   }
 
@@ -536,6 +562,7 @@ private:
     regs.FlagZ(result == 0);
     regs.FlagN(false);
     regs.FlagH(false);
+    regs.FlagC(carry);
     return result;
   }
 
@@ -545,6 +572,7 @@ private:
     regs.FlagZ(result == 0);
     regs.FlagN(false);
     regs.FlagH(false);
+    regs.FlagC(carry);
     return result;
   }
 
@@ -554,6 +582,7 @@ private:
     regs.FlagZ(result == 0);
     regs.FlagN(false);
     regs.FlagH(false);
+    regs.FlagC(carry);
     return result;
   }
 
@@ -572,6 +601,7 @@ private:
     regs.FlagZ(result == 0);
     regs.FlagN(false);
     regs.FlagH(false);
+    regs.FlagC(carry);
     return result;
   }
 
@@ -904,29 +934,33 @@ private:
   }
 
   static u8 op_ld_a16_sp(Core &core, u8 opcode) {
-    core.bus->write(core.fetch16(), core.regs.sp & 0xFF); // low byte
-    core.bus->write(core.fetch16() + 1,
-                    (core.regs.sp >> 8) & 0xFF); // high byte
+    u16 addr = core.fetch16();
+    core.bus->write(addr, core.regs.sp & 0xFF);            // low byte
+    core.bus->write(addr + 1, (core.regs.sp >> 8) & 0xFF); // high byte
     return 20;
   }
 
   static u8 op_rlca(Core &core, u8 opcode) {
     core.regs.a = core.rlc(core.regs.a);
+    core.regs.FlagZ(false); // accumulator rotates always clear Z
     return 4;
   }
 
   static u8 op_rla(Core &core, u8 opcode) {
     core.regs.a = core.rl(core.regs.a);
+    core.regs.FlagZ(false);
     return 4;
   }
 
   static u8 op_rrca(Core &core, u8 opcode) {
     core.regs.a = core.rrc(core.regs.a);
+    core.regs.FlagZ(false);
     return 4;
   }
 
   static u8 op_rra(Core &core, u8 opcode) {
     core.regs.a = core.rr(core.regs.a);
+    core.regs.FlagZ(false);
     return 4;
   }
 
