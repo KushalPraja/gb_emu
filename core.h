@@ -67,7 +67,9 @@ public:
   };
 
   Registers regs{};
-  u16 ime = false; // Interrupt Master Enable flag
+  u16 ime = false;      // Interrupt Master Enable flag
+  bool halted = false;  // HALT state
+  bool stopped = false; // STOP state
 
   Core(Bus &bus) : bus(&bus) {
     for (auto &fn : opcodeTable) {
@@ -185,6 +187,16 @@ public:
     opcodeTable[0xF9] = &op_ld_sp_hl;
     opcodeTable[0xF8] = &op_ld_hl_sp_r8;
     opcodeTable[0x08] = &op_ld_a16_sp;
+    opcodeTable[0x07] = &op_rlca;
+    opcodeTable[0x17] = &op_rla;
+    opcodeTable[0x0F] = &op_rrca;
+    opcodeTable[0x1F] = &op_rra;
+    opcodeTable[0x27] = &op_daa;
+    opcodeTable[0x2F] = &op_cpl;
+    opcodeTable[0x37] = &op_scf;
+    opcodeTable[0x3F] = &op_ccf;
+    opcodeTable[0x76] = &op_halt; // HALT
+    opcodeTable[0x10] = &op_stop; // STOP
   }
 
   u8 step() {
@@ -481,6 +493,42 @@ private:
     }
   }
 
+  u8 rlc(u8 value) {
+    u8 carry = (value >> 7) & 0x01;
+    u8 result = (value << 1) | carry;
+    regs.FlagZ(result == 0);
+    regs.FlagN(false);
+    regs.FlagH(false);
+    return result;
+  }
+
+  u8 rrc(u8 value) {
+    u8 carry = value & 0x01;
+    u8 result = (value >> 1) | (carry << 7);
+    regs.FlagZ(result == 0);
+    regs.FlagN(false);
+    regs.FlagH(false);
+    return result;
+  }
+
+  u8 rl(u8 value) {
+    u8 carry = (value >> 7) & 0x01;
+    u8 result = (value << 1) | (regs.FlagC() ? 1 : 0);
+    regs.FlagZ(result == 0);
+    regs.FlagN(false);
+    regs.FlagH(false);
+    return result;
+  }
+
+  u8 rr(u8 value) {
+    u8 carry = value & 0x01;
+    u8 result = (value >> 1) | ((regs.FlagC() ? 1 : 0) << 7);
+    regs.FlagZ(result == 0);
+    regs.FlagN(false);
+    regs.FlagH(false);
+    return result;
+  }
+
   // Handle ALU operations (ADD, ADC, SUB, SBC, AND, XOR, OR, CP)
   static u8 op_alu(Core &core, u8 opcode) {
     int y = (opcode >> 3) & 0x07; // bits 3-5
@@ -596,7 +644,6 @@ private:
   }
 
   static u8 op_nop(Core &core, u8 opcode) { return 4; }
-
 
   static u8 op_jp_a16(Core &core, u8 opcode) {
     u16 addr = core.fetch16();
@@ -796,7 +843,78 @@ private:
     return 20;
   }
 
+  static u8 op_rlca(Core &core, u8 opcode) {
+    core.regs.a = core.rlc(core.regs.a);
+    return 4;
+  }
+
+  static u8 op_rla(Core &core, u8 opcode) {
+    core.regs.a = core.rl(core.regs.a);
+    return 4;
+  }
+
+  static u8 op_rrca(Core &core, u8 opcode) {
+    core.regs.a = core.rrc(core.regs.a);
+    return 4;
+  }
+
+  static u8 op_rra(Core &core, u8 opcode) {
+    core.regs.a = core.rr(core.regs.a);
+    return 4;
+  }
+
+  static u8 op_cpl(Core &core, u8 opcode) {
+    core.regs.a = ~core.regs.a;
+    core.regs.FlagN(true);
+    core.regs.FlagH(true);
+    return 4;
+  }
+
+  static u8 op_scf(Core &core, u8 opcode) {
+    core.regs.FlagC(true);
+    core.regs.FlagN(false);
+    core.regs.FlagH(false);
+    return 4;
+  }
+
+  static u8 op_ccf(Core &core, u8 opcode) {
+    core.regs.FlagC(!core.regs.FlagC());
+    core.regs.FlagN(false);
+    core.regs.FlagH(false);
+    return 4;
+  }
+
+  static u8 op_daa(Core &core, u8 opcode) {
+    u8 correction = 0;
+    bool setCarry = false;
+
+    if (core.regs.FlagH() || (!core.regs.FlagN() && (core.regs.a & 0x0F) > 9)) {
+      correction |= 0x06;
+    }
+    if (core.regs.FlagC() || (!core.regs.FlagN() && core.regs.a > 0x99)) {
+      correction |= 0x60;
+      setCarry = true;
+    }
+    if (core.regs.FlagN()) {
+      core.regs.a = (core.regs.a - correction) & 0xFF;
+    } else {
+      core.regs.a = (core.regs.a + correction) & 0xFF;
+    }
+    core.regs.FlagZ(core.regs.a == 0);
+    core.regs.FlagH(false);
+    core.regs.FlagC(setCarry);
+    return 4;
+  }
+
+  static u8 op_halt(Core &core, u8 opcode) {
+    core.halted = true;
+    return 4;
+  }
+
+  static u8 op_stop(Core &core, u8 opcode) {
+    core.stopped = true;
+    return 4;
+  }
 };
-//
 
 #endif
