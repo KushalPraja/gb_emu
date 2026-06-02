@@ -71,6 +71,15 @@ public:
   bool halted = false;  // HALT state
   bool stopped = false; // STOP state
 
+  void powerOn() {
+    regs.af(0x01B0); // a=0x01, flags Z H C set
+    regs.bc(0x0013);
+    regs.de(0x00D8);
+    regs.hl(0x014D);
+    regs.sp = 0xFFFE;
+    regs.pc = 0x0100; // cartridge entry point
+  }
+  // Initialize opcode table in constructor
   Core(Bus &bus) : bus(&bus) {
     for (auto &fn : opcodeTable) {
       fn = &undefined_opcode; // default to undefined opcode handler
@@ -197,6 +206,7 @@ public:
     opcodeTable[0x3F] = &op_ccf;
     opcodeTable[0x76] = &op_halt; // HALT
     opcodeTable[0x10] = &op_stop; // STOP
+    opcodeTable[0xCB] = &op_cb;   // CB prefix for bit operations
   }
 
   u8 step() {
@@ -529,6 +539,63 @@ private:
     return result;
   }
 
+  u8 sla(u8 value) {
+    u8 carry = (value >> 7) & 0x01;
+    u8 result = value << 1;
+    regs.FlagZ(result == 0);
+    regs.FlagN(false);
+    regs.FlagH(false);
+    return result;
+  }
+
+  u8 sra(u8 value) {
+    u8 carry = value & 0x01;
+    u8 result = (value >> 1) | (value & 0x80); // keep MSB
+    regs.FlagZ(result == 0);
+    regs.FlagN(false);
+    regs.FlagH(false);
+    return result;
+  }
+
+  u8 swap(u8 value) {
+    u8 result = (value << 4) | (value >> 4);
+    regs.FlagZ(result == 0);
+    regs.FlagN(false);
+    regs.FlagH(false);
+    regs.FlagC(false);
+    return result;
+  }
+
+  u8 srl(u8 value) {
+    u8 carry = value & 0x01;
+    u8 result = value >> 1;
+    regs.FlagZ(result == 0);
+    regs.FlagN(false);
+    regs.FlagH(false);
+    return result;
+  }
+
+  u8 rotShiftOp(int y, u8 value) {
+    switch (y) {
+    case 0:
+      return rlc(value);
+    case 1:
+      return rrc(value);
+    case 2:
+      return rl(value);
+    case 3:
+      return rr(value);
+    case 4:
+      return sla(value);
+    case 5:
+      return sra(value);
+    case 6:
+      return swap(value);
+    default:
+      return srl(value);
+    }
+  }
+
   // Handle ALU operations (ADD, ADC, SUB, SBC, AND, XOR, OR, CP)
   static u8 op_alu(Core &core, u8 opcode) {
     int y = (opcode >> 3) & 0x07; // bits 3-5
@@ -568,8 +635,8 @@ private:
     return (y == 6) ? 12 : 4; // (HL) takes extra cycles
   }
 
-  // Handle LD r[y], d8 instructions (0x06, 0x0E, 0x16, 0x1E, 0x26, 0x2E, 0x36,
-  // 0x3E)
+  // Handle LD r[y], d8 instructions (0x06, 0x0E, 0x16, 0x1E, 0x26, 0x2E,
+  // 0x36, 0x3E)
   static u8 op_ld_r_d8(Core &core, u8 opcode) {
     int y = (opcode >> 3) & 0x07; // bits 3-5
     core.writeReg(y, core.fetch8());
@@ -914,6 +981,33 @@ private:
   static u8 op_stop(Core &core, u8 opcode) {
     core.stopped = true;
     return 4;
+  }
+
+  static u8 op_cb(Core &core, u8 prefix) {
+    u8 opcode = core.fetch8();
+    int x = (opcode >> 6) & 0x03;
+    int y = (opcode >> 3) & 0x07;
+    int z = opcode & 0x07;
+
+    u8 value = core.readReg(z);
+    bool isHL = (z == 6);
+
+    switch (x) {
+    case 0:
+      core.writeReg(z, core.rotShiftOp(y, value));
+      return isHL ? 16 : 8;
+    case 1:
+      core.regs.FlagZ(((value >> y) & 1) == 0);
+      core.regs.FlagN(false);
+      core.regs.FlagH(true); // C is left untouched
+      return isHL ? 12 : 8;
+    case 2:
+      core.writeReg(z, value & ~(1 << y));
+      return isHL ? 16 : 8;
+    default:
+      core.writeReg(z, value | (1 << y));
+      return isHL ? 16 : 8;
+    }
   }
 };
 
