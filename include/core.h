@@ -1,10 +1,9 @@
 // gameboy cpu
 
-#include <cstdint>
-#include <cstdio>
-
 #include "bus.h"
 #include "types.h"
+#include <cstdint>
+#include <cstdio>
 
 #ifndef CORE_H
 #define CORE_H
@@ -67,9 +66,11 @@ public:
   };
 
   Registers regs{};
-  u16 ime = false;      // Interrupt Master Enable flag
-  bool halted = false;  // HALT state
-  bool stopped = false; // STOP state
+  u16 ime = false;           // Interrupt Master Enable flag
+  bool imeScheduled = false; // Flag to indicate if EI was just executed
+  bool halted = false;       // HALT state
+  bool stopped = false;      // STOP state
+  bool haltBug = false;      // HALT bug: skip one PC increment on next fetch
 
   void powerOn() {
     regs.af(0x01B0); // a=0x01, flags Z H C set
@@ -79,6 +80,33 @@ public:
     regs.sp = 0xFFFE;
     regs.pc = 0x0100; // cartridge entry point
   }
+
+  bool handleInterrupts() {
+    u8 IE = bus->read(0xFFFF);
+    u8 IF = bus->read(0xFF0F);
+    u8 pending = IE & IF & 0x1F; // only bits 0-4 are valid
+
+    if (pending == 0) {
+      return false;
+    }
+
+    halted = false; // a pending interrupt wakes HALT regardless of IME
+    if (!ime) {
+      return false;
+    }
+
+    for (int bit = 0; bit < 5; bit++) {
+      if ((pending) & (1 << bit)) {
+        ime = false; // disable further interrupts until RETI
+        bus->write(0xFF0F, IF & ~(1 << bit)); // acknowledge the interrupt
+        push16(regs.pc);
+        regs.pc = 0x40 + bit * 8; // jump to the appropriate interrupt vector
+        return true;
+      }
+    }
+    return false;
+  }
+
   // Initialize opcode table in constructor
   Core(Bus &bus) : bus(&bus) {
     for (auto &fn : opcodeTable) {
@@ -210,31 +238,24 @@ public:
   }
 
   u8 step() {
-    // Interrupt servicing: IF (0xFF0F) & IE (0xFFFF), bits 0-4
-    u8 IF = bus->read(0xFF0F);
-    u8 IE = bus->read(0xFFFF);
-    u8 pending = IF & IE & 0x1F;
+    u8 cycles;
 
-    if (pending) {
-      halted = false; // a pending interrupt wakes HALT regardless of IME
-      if (ime) {
-        ime = false;
-        int bit = 0;
-        while (!((pending >> bit) & 1))
-          bit++;
-        bus->write(0xFF0F, IF & ~(1 << bit)); // acknowledge
-        push16(regs.pc);
-        static const u16 vectors[5] = {0x40, 0x48, 0x50, 0x58, 0x60};
-        regs.pc = vectors[bit];
-        return 20;
+    if (handleInterrupts()) {
+      cycles = 20; // interrupt dispatch takes 20 cycles
+    } else if (halted) {
+      cycles = 4; // wait for an interrupt
+    } else {
+      bool enableNow = imeScheduled; // EI from the previous instruction?
+      u8 opcode = fetch8();
+      cycles = opcodeTable[opcode](*this, opcode);
+      if (enableNow) {
+        ime = true; // EI takes effect after the next instruction
+        imeScheduled = false;
       }
     }
 
-    if (halted)
-      return 4; // wait for an interrupt
-
-    u8 opcode = fetch8();
-    return opcodeTable[opcode](*this, opcode);
+    bus->tickTimer(cycles);
+    return cycles;
   }
 
 private:
@@ -246,7 +267,10 @@ private:
   // fetch a byte from memory at the current PC and increment PC
   u8 fetch8() {
     u8 val = bus->read(regs.pc);
-    regs.pc++;
+    if (haltBug)
+      haltBug = false; // HALT bug: read this byte without advancing PC once
+    else
+      regs.pc++;
     return val;
   }
 
@@ -821,6 +845,7 @@ private:
     u16 addr;
     core.pop16(addr);
     core.regs.pc = addr;
+    core.ime = true; // RETI re-enables interrupts immediately
     return 16;
   }
 
@@ -834,11 +859,12 @@ private:
 
   static u8 op_di(Core &core, u8 opcode) {
     core.ime = false;
+    core.imeScheduled = false; // cancel any pending EI
     return 4;
   }
 
   static u8 op_ei(Core &core, u8 opcode) {
-    core.ime = true;
+    core.imeScheduled = true;
     return 4;
   };
 
@@ -929,7 +955,12 @@ private:
 
   static u8 op_ld_hl_sp_r8(Core &core, u8 opcode) {
     std::int8_t offset = static_cast<std::int8_t>(core.fetch8());
-    core.regs.hl((u16)(core.regs.sp + offset));
+    u16 sp = core.regs.sp;
+    core.regs.FlagZ(false);
+    core.regs.FlagN(false);
+    core.regs.FlagH(((sp & 0xF) + (offset & 0xF)) > 0x0F);
+    core.regs.FlagC(((sp & 0xFF) + (offset & 0xFF)) > 0xFF);
+    core.regs.hl((u16)(sp + offset));
     return 12;
   }
 
@@ -1008,7 +1039,13 @@ private:
   }
 
   static u8 op_halt(Core &core, u8 opcode) {
-    core.halted = true;
+    u8 pending = core.bus->read(0xFFFF) & core.bus->read(0xFF0F) & 0x1F;
+    if (!core.ime && pending) {
+      // HALT bug: CPU does not halt; the byte after HALT is read twice.
+      core.haltBug = true;
+    } else {
+      core.halted = true;
+    }
     return 4;
   }
 

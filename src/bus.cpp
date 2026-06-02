@@ -12,6 +12,12 @@ bool Bus::loadRom(const char *path) {
 }
 
 void Bus::write(u16 addr, u8 value) {
+  if (addr < 0x8000)
+    return; // ROM region is read-only
+  if (addr >= 0xFF04 && addr <= 0xFF07) {
+    timer.write(addr, value);
+    return;
+  }
   memory[addr] = value;
   if (addr == 0xFF02 && value == 0x81) {
     std::putchar((char)memory[0xFF01]);
