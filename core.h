@@ -67,6 +67,7 @@ public:
   };
 
   Registers regs{};
+  u16 ime = false; // Interrupt Master Enable flag
 
   Core(Bus &bus) : bus(&bus) {
     for (auto &fn : opcodeTable) {
@@ -138,6 +139,52 @@ public:
     }
 
     opcodeTable[0xE8] = &op_add_sp_r8; // ADD SP, r8
+    opcodeTable[0xC3] = &op_jp_a16;    // JP a16
+    opcodeTable[0xE9] = &op_jp_hl;     // JP (HL)
+    opcodeTable[0x18] = &op_jr_r8;     // JR r8
+    opcodeTable[0xCD] = &op_call_a16;  // CALL a16
+    opcodeTable[0xC9] = &op_ret;       // RET
+    opcodeTable[0xD9] = &op_reti;      // RETI
+    opcodeTable[0xC7] = &op_rst;       // RST
+    opcodeTable[0xF3] = &op_di;        // DI
+    opcodeTable[0xFB] = &op_ei;        // EI
+
+    for (int opcode = 0xC2; opcode <= 0xDA; opcode += 8) {
+      opcodeTable[opcode] = &op_jp_cc_a16; // JP cc, a16
+    }
+
+    for (int opcode = 0x20; opcode <= 0x38; opcode += 8) {
+      opcodeTable[opcode] = &op_jr_cc_r8; // JR cc, r8
+    }
+    for (int opcode = 0xC4; opcode <= 0xDC; opcode += 8) {
+      opcodeTable[opcode] = &op_call_cc_a16; // CALL cc, a16
+    }
+
+    for (int opcode = 0xC0; opcode <= 0xD8; opcode += 8) {
+      opcodeTable[opcode] = &op_ret_cc; // RET cc
+    }
+
+    for (int opcode = 0xC7; opcode <= 0xFF; opcode += 8) {
+      opcodeTable[opcode] = &op_rst; // RST n
+    }
+
+    opcodeTable[0x0A] = &op_ld_a_bc;
+    opcodeTable[0x1A] = &op_ld_a_de;
+    opcodeTable[0x02] = &op_ld_bc_a;
+    opcodeTable[0x12] = &op_ld_de_a;
+    opcodeTable[0x22] = &op_ld_hli_a;
+    opcodeTable[0x32] = &op_ld_hld_a;
+    opcodeTable[0x2A] = &op_ld_a_hli;
+    opcodeTable[0x3A] = &op_ld_a_hld;
+    opcodeTable[0xE0] = &op_ldh_a8_a;
+    opcodeTable[0xF0] = &op_ldh_a_a8;
+    opcodeTable[0xE2] = &op_ld_c_a;
+    opcodeTable[0xF2] = &op_ld_a_c;
+    opcodeTable[0xEA] = &op_ld_a16_a;
+    opcodeTable[0xFA] = &op_ld_a_a16;
+    opcodeTable[0xF9] = &op_ld_sp_hl;
+    opcodeTable[0xF8] = &op_ld_hl_sp_r8;
+    opcodeTable[0x08] = &op_ld_a16_sp;
   }
 
   u8 step() {
@@ -410,6 +457,30 @@ private:
     }
   }
 
+  // Stack operations
+  void push16(u16 value) {
+    bus->write(--regs.sp, (value >> 8) & 0xFF); // high byte
+    bus->write(--regs.sp, value & 0xFF);        // low byte
+  }
+
+  void pop16(u16 &value) {
+    value = bus->read(regs.sp++);
+    value |= (bus->read(regs.sp++) << 8);
+  }
+
+  bool checkCondition(int condition) {
+    switch (condition) {
+    case 0: // NZ
+      return !regs.FlagZ();
+    case 1: // Z
+      return regs.FlagZ();
+    case 2: // NC
+      return !regs.FlagC();
+    default: // C
+      return regs.FlagC();
+    }
+  }
+
   // Handle ALU operations (ADD, ADC, SUB, SBC, AND, XOR, OR, CP)
   static u8 op_alu(Core &core, u8 opcode) {
     int y = (opcode >> 3) & 0x07; // bits 3-5
@@ -449,7 +520,8 @@ private:
     return (y == 6) ? 12 : 4; // (HL) takes extra cycles
   }
 
-  // Handle LD r[y], d8 instructions (0x06, 0x0E, 0x16, 0x1E, 0x26, 0x2E, 0x36, 0x3E)
+  // Handle LD r[y], d8 instructions (0x06, 0x0E, 0x16, 0x1E, 0x26, 0x2E, 0x36,
+  // 0x3E)
   static u8 op_ld_r_d8(Core &core, u8 opcode) {
     int y = (opcode >> 3) & 0x07; // bits 3-5
     core.writeReg(y, core.fetch8());
@@ -525,7 +597,206 @@ private:
 
   static u8 op_nop(Core &core, u8 opcode) { return 4; }
 
-  // control flow instructions
+
+  static u8 op_jp_a16(Core &core, u8 opcode) {
+    u16 addr = core.fetch16();
+    core.regs.pc = addr;
+    return 16;
+  }
+
+  static u8 op_jp_cc_a16(Core &core, u8 opcode) {
+    int condition = (opcode >> 3) & 0x03; // bits 3-4
+    u16 addr = core.fetch16();
+    if (core.checkCondition(condition)) {
+      core.regs.pc = addr;
+      return 16;
+    }
+    return 12; // condition not met, still need to consume the address
+  }
+
+  static u8 op_jp_hl(Core &core, u8 opcode) {
+    core.regs.pc = core.regs.hl();
+    return 4;
+  }
+
+  static u8 op_jr_r8(Core &core, u8 opcode) {
+    std::int8_t offset = static_cast<std::int8_t>(core.fetch8());
+    core.regs.pc += offset;
+    return 12;
+  }
+
+  static u8 op_jr_cc_r8(Core &core, u8 opcode) {
+    int condition = (opcode >> 3) & 0x03; // bits 3-4
+    std::int8_t offset = static_cast<std::int8_t>(core.fetch8());
+    if (core.checkCondition(condition)) {
+      core.regs.pc += offset;
+      return 12;
+    }
+    return 8; // condition not met, still need to consume the offset
+  }
+
+  static u8 op_call_a16(Core &core, u8 opcode) {
+    u16 addr = core.fetch16();
+    core.push16(core.regs.pc);
+    core.regs.pc = addr;
+    return 24;
+  }
+
+  static u8 op_call_cc_a16(Core &core, u8 opcode) {
+    int condition = (opcode >> 3) & 0x03; // bits 3-4
+    u16 addr = core.fetch16();
+    if (core.checkCondition(condition)) {
+      core.push16(core.regs.pc);
+      core.regs.pc = addr;
+      return 24;
+    }
+    return 12; // condition not met, still need to consume the address
+  }
+
+  // returns
+
+  static u8 op_ret(Core &core, u8 opcode) {
+    u16 addr;
+    core.pop16(addr);
+    core.regs.pc = addr;
+    return 16;
+  }
+
+  static u8 op_ret_cc(Core &core, u8 opcode) {
+    int condition = (opcode >> 3) & 0x03; // bits 3-4
+    if (core.checkCondition(condition)) {
+      u16 addr;
+      core.pop16(addr);
+      core.regs.pc = addr;
+      return 20;
+    }
+    return 8; // condition not met, no stack operation
+  }
+
+  static u8 op_reti(Core &core, u8 opcode) {
+    u16 addr;
+    core.pop16(addr);
+    core.regs.pc = addr;
+    return 16;
+  }
+
+  // restarts
+  static u8 op_rst(Core &core, u8 opcode) {
+    int n = (opcode >> 3) & 0x07; // bits 3-5
+    core.push16(core.regs.pc);
+    core.regs.pc = n * 8;
+    return 16;
+  }
+
+  static u8 op_di(Core &core, u8 opcode) {
+    core.ime = false;
+    return 4;
+  }
+
+  static u8 op_ei(Core &core, u8 opcode) {
+    core.ime = true;
+    return 4;
+  };
+
+  // implement more laods
+
+  static u8 op_ld_a_bc(Core &core, u8 opcode) {
+    core.regs.a = core.bus->read(core.regs.bc());
+    return 8;
+  }
+
+  static u8 op_ld_a_de(Core &core, u8 opcode) {
+    core.regs.a = core.bus->read(core.regs.de());
+    return 8;
+  }
+
+  static u8 op_ld_bc_a(Core &core, u8 opcode) {
+    core.bus->write(core.regs.bc(), core.regs.a);
+    return 8;
+  };
+
+  static u8 op_ld_de_a(Core &core, u8 opcode) {
+    core.bus->write(core.regs.de(), core.regs.a);
+    return 8;
+  };
+
+  // HIL instructions
+
+  static u8 op_ld_hli_a(Core &core, u8 opcode) {
+    core.bus->write(core.regs.hl(), core.regs.a);
+    core.regs.hl(core.regs.hl() + 1);
+    return 8;
+  };
+
+  static u8 op_ld_hld_a(Core &core, u8 opcode) {
+    core.bus->write(core.regs.hl(), core.regs.a);
+    core.regs.hl(core.regs.hl() - 1);
+    return 8;
+  }
+
+  static u8 op_ld_a_hli(Core &core, u8 opcode) {
+    core.regs.a = core.bus->read(core.regs.hl());
+    core.regs.hl(core.regs.hl() + 1);
+    return 8;
+  };
+
+  static u8 op_ld_a_hld(Core &core, u8 opcode) {
+    core.regs.a = core.bus->read(core.regs.hl());
+    core.regs.hl(core.regs.hl() - 1);
+    return 8;
+  }
+
+  static u8 op_ldh_a8_a(Core &core, u8 opcode) {
+    u8 offset = core.fetch8();
+    core.bus->write(0xFF00 + offset, core.regs.a);
+    return 12;
+  };
+
+  static u8 op_ldh_a_a8(Core &core, u8 opcode) {
+    u8 offset = core.fetch8();
+    core.regs.a = core.bus->read(0xFF00 + offset);
+    return 12;
+  }
+
+  static u8 op_ld_c_a(Core &core, u8 opcode) {
+    core.bus->write(0xFF00 + core.regs.c, core.regs.a);
+    return 8;
+  }
+
+  static u8 op_ld_a_c(Core &core, u8 opcode) {
+    core.regs.a = core.bus->read(0xFF00 + core.regs.c);
+    return 8;
+  }
+
+  static u8 op_ld_a16_a(Core &core, u8 opcode) {
+    core.bus->write(core.fetch16(), core.regs.a);
+    return 16;
+  }
+
+  static u8 op_ld_a_a16(Core &core, u8 opcode) {
+    core.regs.a = core.bus->read(core.fetch16());
+    return 16;
+  }
+
+  static u8 op_ld_sp_hl(Core &core, u8 opcode) {
+    core.regs.sp = core.regs.hl();
+    return 8;
+  }
+
+  static u8 op_ld_hl_sp_r8(Core &core, u8 opcode) {
+    std::int8_t offset = static_cast<std::int8_t>(core.fetch8());
+    core.regs.hl((u16)(core.regs.sp + offset));
+    return 12;
+  }
+
+  static u8 op_ld_a16_sp(Core &core, u8 opcode) {
+    core.bus->write(core.fetch16(), core.regs.sp & 0xFF); // low byte
+    core.bus->write(core.fetch16() + 1,
+                    (core.regs.sp >> 8) & 0xFF); // high byte
+    return 20;
+  }
+
 };
+//
 
 #endif
