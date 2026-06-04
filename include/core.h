@@ -254,7 +254,7 @@ public:
       }
     }
 
-    bus->tickTimer(cycles);
+    bus->tick(cycles);
     return cycles;
   }
 

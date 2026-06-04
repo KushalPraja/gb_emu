@@ -5,9 +5,10 @@ An emulator for the Nintendo Game Boy written in pure C++. This is a work in pro
 ## Current Status:
 
 [x] CPU (interrupts, timers, and all opcodes) \
-[ ] PPU \
-[ ] APU \
-[ ] Input
+[x] PPU (background, window, sprites, LCD/STAT interrupts) \
+[x] APU (2 pulse, wave, noise channels with audio output) \
+[x] Input (joypad) \
+[x] Cartridges (plain 32KB + MBC1, battery RAM)
 
 ## Resources:
 
@@ -15,15 +16,20 @@ An emulator for the Nintendo Game Boy written in pure C++. This is a work in pro
 - Opcode: https://gbdev.io/pandocs/CPU_Instruction_Set.html
 - Interrupts: https://gbdev.io/pandocs/Interrupts.html
 
+## Dependencies:
+
+- A C++17 compiler and CMake (>= 3.16)
+- [SDL2](https://www.libsdl.org/) for video, input and audio
+  (`sudo apt install libsdl2-dev`)
+
 ## Building and Running:
 
 1. Clone the repository and navigate to the project directory.
 
 2. Build the project using CMake:
    ```bash
-   mkdir build
-   cmake -S . -B build
-   cmake --build build 
+   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+   cmake --build build
    ```
 
 3. Run the emulator (replace `path/to/rom.gb` with the actual path to your rom file):
@@ -31,5 +37,21 @@ An emulator for the Nintendo Game Boy written in pure C++. This is a work in pro
    ```bash
    ./build/gb_emu path/to/rom.gb
    ```
+
+   Extra modes:
+   - `--headless rom.gb` — run without a window, printing serial output
+     (used for the Blargg CPU test ROMs in `tests/`).
+   - `--ascii N rom.gb` — run `N` frames headless then print the LCD as ASCII
+     (a quick way to check rendering without a display).
+
+## Controls:
+
+| Key            | Game Boy button |
+| -------------- | --------------- |
+| Z              | A               |
+| X              | B               |
+| Enter          | Start           |
+| Backspace      | Select          |
+| Arrow keys     | D-pad           |
 
 ---
