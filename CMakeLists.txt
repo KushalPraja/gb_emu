@@ -37,5 +37,12 @@ add_executable(gb_emu
 )
 
 target_include_directories(gb_emu PRIVATE include src ${SDL2_INCLUDE_DIRS})
+
+# On Windows, SDL renames main() to SDL_main and SDL2main provides the real
+# WinMain entry point, so it must be linked when the target exists.
+if(TARGET SDL2::SDL2main)
+  target_link_libraries(gb_emu PRIVATE SDL2::SDL2main)
+endif()
+
 target_link_libraries(gb_emu PRIVATE ${SDL2_LIBRARIES} imgui)
 target_compile_options(gb_emu PRIVATE -Wall -Wextra)

@@ -1,0 +1,122 @@
+name: Release
+
+# Build native binaries for Linux and Windows and attach them to a GitHub
+# Release. Triggered by pushing a version tag (e.g. v0.1.0), or manually.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
+
+jobs:
+  build-linux:
+    name: Build (Linux x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libsdl2-dev
+
+      - name: Configure & build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j"$(nproc)"
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          cp build/gb_emu dist/
+          cp ReadMe.md dist/
+          printf 'gb_emu (Linux x86_64)\n\nRequires SDL2 at runtime:\n  Debian/Ubuntu : sudo apt install libsdl2-2.0-0\n  Fedora        : sudo dnf install SDL2\n  Arch          : sudo pacman -S sdl2\n\nRun:\n  ./gb_emu path/to/rom.gb\n' > dist/RUNNING.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gb_emu-linux
+          path: dist/
+
+  build-windows:
+    name: Build (Windows x86_64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2 / MinGW64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-SDL2
+
+      - name: Configure & build
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Stage artifact (exe + runtime DLLs)
+        run: |
+          mkdir -p dist
+          cp build/gb_emu.exe dist/
+          # Copy every MinGW DLL the executable depends on so the zip is self-contained.
+          for dll in $(ldd build/gb_emu.exe | grep -i '/mingw64/' | awk '{print $3}'); do
+            cp "$dll" dist/
+          done
+          cp ReadMe.md dist/
+          printf 'gb_emu (Windows x86_64)\r\n\r\nThe bundled DLLs must stay next to gb_emu.exe.\r\nRun from a terminal:  gb_emu.exe path\\to\\rom.gb\r\nor drag a .gb ROM onto the executable.\r\n' > dist/RUNNING.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gb_emu-windows
+          path: dist/
+
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows]
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package archives
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          chmod +x artifacts/gb_emu-linux/gb_emu
+          tar -czf "gb_emu-${V}-linux-x86_64.tar.gz" -C artifacts/gb_emu-linux .
+          (cd artifacts/gb_emu-windows && zip -r "../../gb_emu-${V}-windows-x86_64.zip" .)
+          ls -la gb_emu-*.{tar.gz,zip}
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.version }}
+          name: gb_emu ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          files: |
+            gb_emu-*-linux-x86_64.tar.gz
+            gb_emu-*-windows-x86_64.zip

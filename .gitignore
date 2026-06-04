@@ -1,3 +1,17 @@
+# Build output
 CMakeFiles/
 build/
 cache/
+.cache/
+dist/
+
+# Compiled objects / libraries
+*.o
+*.a
+*.obj
+
+# Local CMake scratch
+compile_commands.json
+
+# Battery saves
+*.sav
