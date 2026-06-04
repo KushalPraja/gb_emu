@@ -1,5 +1,6 @@
 #include "cartridge.h"
 #include <cstdio>
+#include <filesystem>
 
 bool Cartridge::load(const char *path) {
   std::FILE *f = std::fopen(path, "rb");
@@ -79,9 +80,55 @@ bool Cartridge::load(const char *path) {
   hasRam = ramBankCount > 0;
   ram.assign((size_t)ramBankCount * 0x2000, 0);
 
-  std::printf("Loaded ROM: \"%s\"  type=0x%02X  %u ROM banks  %u RAM banks\n",
-              romTitle.c_str(), (unsigned)type, romBankCount, ramBankCount);
+  // Cartridge types with a battery keep their RAM across power cycles.
+  switch (type) {
+  case 0x03: // MBC1 + RAM + battery
+  case 0x06: // MBC2 + battery
+  case 0x09: // ROM + RAM + battery
+  case 0x0D: // MMM01 + RAM + battery
+  case 0x0F: // MBC3 + timer + battery
+  case 0x10: // MBC3 + timer + RAM + battery
+  case 0x13: // MBC3 + RAM + battery
+  case 0x1B: // MBC5 + RAM + battery
+  case 0x1E: // MBC5 + rumble + RAM + battery
+    hasBattery = true;
+    break;
+  default:
+    hasBattery = false;
+    break;
+  }
+
+  savePath = std::filesystem::path(path).replace_extension(".sav").string();
+  ramDirty = false;
+  if (hasBattery && hasRam)
+    loadSave();
+
+  std::printf("Loaded ROM: \"%s\"  type=0x%02X  %u ROM banks  %u RAM banks%s\n",
+              romTitle.c_str(), (unsigned)type, romBankCount, ramBankCount,
+              hasBattery ? "  [battery]" : "");
   return true;
+}
+
+void Cartridge::loadSave() {
+  std::FILE *f = std::fopen(savePath.c_str(), "rb");
+  if (!f)
+    return; // no save yet — fresh cartridge
+  size_t got = std::fread(ram.data(), 1, ram.size(), f);
+  std::fclose(f);
+  std::printf("Loaded save: %s (%zu bytes)\n", savePath.c_str(), got);
+}
+
+void Cartridge::flushSave() {
+  if (!hasBattery || !hasRam || !ramDirty)
+    return;
+  std::FILE *f = std::fopen(savePath.c_str(), "wb");
+  if (!f) {
+    std::printf("could not write save %s\n", savePath.c_str());
+    return;
+  }
+  std::fwrite(ram.data(), 1, ram.size(), f);
+  std::fclose(f);
+  ramDirty = false;
 }
 
 u32 Cartridge::romOffsetLow(u16 addr) const {
@@ -145,6 +192,9 @@ void Cartridge::writeRam(u16 addr, u8 value) {
   if (!hasRam || (mbc == Mbc::Mbc1 && !ramEnabled))
     return;
   u32 off = ramOffset(addr);
-  if (off < ram.size())
+  if (off < ram.size()) {
+    if (ram[off] != value)
+      ramDirty = true;
     ram[off] = value;
+  }
 }

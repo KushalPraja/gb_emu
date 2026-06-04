@@ -14,13 +14,28 @@ endif()
 
 find_package(SDL2 REQUIRED)
 
+# Dear ImGui (vendored) with the SDL2 + SDL_Renderer backends.
+set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/third_party/imgui)
+add_library(imgui STATIC
+  ${IMGUI_DIR}/imgui.cpp
+  ${IMGUI_DIR}/imgui_draw.cpp
+  ${IMGUI_DIR}/imgui_tables.cpp
+  ${IMGUI_DIR}/imgui_widgets.cpp
+  ${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp
+  ${IMGUI_DIR}/backends/imgui_impl_sdlrenderer2.cpp
+)
+target_include_directories(imgui PUBLIC
+  ${IMGUI_DIR} ${IMGUI_DIR}/backends ${SDL2_INCLUDE_DIRS})
+target_link_libraries(imgui PUBLIC ${SDL2_LIBRARIES})
+
 add_executable(gb_emu
   src/main.cpp
   src/cartridge.cpp
   src/ppu.cpp
   src/apu.cpp
+  src/display.cpp
 )
 
 target_include_directories(gb_emu PRIVATE include src ${SDL2_INCLUDE_DIRS})
-target_link_libraries(gb_emu PRIVATE ${SDL2_LIBRARIES})
+target_link_libraries(gb_emu PRIVATE ${SDL2_LIBRARIES} imgui)
 target_compile_options(gb_emu PRIVATE -Wall -Wextra)

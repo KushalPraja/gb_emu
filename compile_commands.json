@@ -1,14 +1,1 @@
-[
-{
-  "directory": "/home/kush/gb_emu",
-    "command": "/usr/bin/c++  -I/home/kush/gb_emu/include -I/home/kush/gb_emu/src -std=c++17 -Wall -Wextra -o CMakeFiles/gb_emu.dir/src/main.cpp.o -c /home/kush/gb_emu/src/main.cpp",
-  "file": "/home/kush/gb_emu/src/main.cpp",
-  "output": "CMakeFiles/gb_emu.dir/src/main.cpp.o"
-},
-{
-  "directory": "/home/kush/gb_emu",
-    "command": "/usr/bin/c++  -I/home/kush/gb_emu/include -I/home/kush/gb_emu/src -std=c++17 -Wall -Wextra -o CMakeFiles/gb_emu.dir/src/bus.cpp.o -c /home/kush/gb_emu/src/bus.cpp",
-  "file": "/home/kush/gb_emu/src/bus.cpp",
-  "output": "CMakeFiles/gb_emu.dir/src/bus.cpp.o"
-}
-]
+build/compile_commands.json

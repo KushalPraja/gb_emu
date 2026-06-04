@@ -22,6 +22,11 @@ public:
 
   const std::string &title() const { return romTitle; }
 
+  // Battery-backed RAM persistence. flushSave() writes the cart RAM to the
+  // ".sav" file beside the ROM, but only for battery cartridges with unsaved
+  // changes; it is a cheap no-op otherwise.
+  void flushSave();
+
 private:
   enum class Mbc { None, Mbc1 };
 
@@ -31,6 +36,12 @@ private:
 
   Mbc mbc = Mbc::None;
   bool hasRam = false;
+
+  // Battery-backed save support.
+  bool hasBattery = false;
+  bool ramDirty = false;   // RAM written since the last flush
+  std::string savePath;    // "<rom>.sav"
+  void loadSave();         // read savePath into ram on load
 
   // MBC1 state
   bool ramEnabled = false;

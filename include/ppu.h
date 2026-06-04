@@ -23,6 +23,12 @@ public:
   u8 readReg(u16 addr) const;
   void writeReg(u16 addr, u8 value);
 
+  // Swap the 4-shade output palette (index 0 = lightest). ARGB8888 entries.
+  void setPalette(const u32 p[4]) {
+    for (int i = 0; i < 4; i++)
+      colors[i] = p[i];
+  }
+
   // Interrupt requests accumulated during tick(): bit0 = VBlank, bit1 = STAT.
   // The bus drains this into the IF register.
   u8 irq = 0;
@@ -35,6 +41,9 @@ private:
   std::array<u8, 0x2000> vram{};
   std::array<u8, 0xA0> oam{};
   std::array<u32, WIDTH * HEIGHT> fb{};
+
+  // Output palette, shade 0 (lightest) to 3 (darkest). Defaults to DMG green.
+  std::array<u32, 4> colors{0xFF9BBC0F, 0xFF8BAC0F, 0xFF306230, 0xFF0F380F};
 
   // LCD registers.
   u8 lcdc = 0x91;

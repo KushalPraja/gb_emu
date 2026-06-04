@@ -19,6 +19,9 @@ public:
 
   bool loadRom(const char *path) { return cart.load(path); }
 
+  // Persist battery-backed cartridge RAM (no-op for non-battery carts).
+  void saveRam() { cart.flushSave(); }
+
   u8 read(u16 addr) {
     if (addr < 0x8000)
       return cart.readRom(addr);

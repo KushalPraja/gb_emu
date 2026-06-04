@@ -1,9 +1,6 @@
 #include "ppu.h"
 
 namespace {
-// Classic DMG green palette, indexed by shade 0 (lightest) to 3 (darkest).
-constexpr u32 kPalette[4] = {0xFF9BBC0F, 0xFF8BAC0F, 0xFF306230, 0xFF0F380F};
-
 // LCDC bit helpers.
 constexpr u8 LCDC_ENABLE = 0x80;
 constexpr u8 LCDC_WIN_MAP = 0x40;
@@ -108,7 +105,7 @@ void PPU::renderScanline() {
     renderBackground();
   else
     for (int x = 0; x < WIDTH; x++)
-      fb[ly * WIDTH + x] = kPalette[0];
+      fb[ly * WIDTH + x] = colors[0];
   if (lcdc & LCDC_OBJ_ENABLE)
     renderSprites();
 }
@@ -155,7 +152,7 @@ void PPU::renderBackground() {
 
     bgColor[x] = colorNum;
     u8 shade = (bgp >> (colorNum * 2)) & 0x03;
-    fb[ly * WIDTH + x] = kPalette[shade];
+    fb[ly * WIDTH + x] = colors[shade];
   }
 
   if (usedWindow)
@@ -220,7 +217,7 @@ void PPU::renderSprites() {
       if (behindBg && bgColor[x] != 0)
         continue; // sprite hidden behind non-zero background
       u8 shade = (palette >> (colorNum * 2)) & 0x03;
-      fb[ly * WIDTH + x] = kPalette[shade];
+      fb[ly * WIDTH + x] = colors[shade];
     }
   }
 }
