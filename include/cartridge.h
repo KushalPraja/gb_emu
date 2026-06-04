@@ -28,7 +28,7 @@ public:
   void flushSave();
 
 private:
-  enum class Mbc { None, Mbc1 };
+  enum class Mbc { None, Mbc1, Mbc3 };
 
   std::vector<u8> rom;
   std::vector<u8> ram;
@@ -48,6 +48,10 @@ private:
   u8 romBankLow = 1;  // lower 5 bits (0 is remapped to 1)
   u8 romBankHigh = 0; // upper 2 bits (RAM bank or ROM bank bits 5-6)
   u8 bankMode = 0;    // 0 = ROM banking, 1 = RAM banking
+
+  // MBC3 state
+  u8 mbc3RomBank = 1; // 7-bit ROM bank (0 is remapped to 1)
+  u8 mbc3RamBank = 0; // 0-3 select RAM; 0x08-0x0C select an RTC register
 
   u32 romBankCount = 0;
   u32 ramBankCount = 0;

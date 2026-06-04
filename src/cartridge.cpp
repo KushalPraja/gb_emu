@@ -40,6 +40,13 @@ bool Cartridge::load(const char *path) {
   case 0x03: // MBC1 + RAM + battery
     mbc = Mbc::Mbc1;
     break;
+  case 0x0F: // MBC3 + timer + battery
+  case 0x10: // MBC3 + timer + RAM + battery
+  case 0x11: // MBC3
+  case 0x12: // MBC3 + RAM
+  case 0x13: // MBC3 + RAM + battery
+    mbc = Mbc::Mbc3;
+    break;
   default:
     std::printf("cartridge: unsupported mapper type 0x%02X, assuming MBC1\n",
                 (unsigned)type);
@@ -144,10 +151,16 @@ u32 Cartridge::romOffsetLow(u16 addr) const {
 u32 Cartridge::romOffsetHigh(u16 addr) const {
   if (mbc == Mbc::None)
     return addr; // flat 32KB
-  u32 low = romBankLow & 0x1F;
-  if (low == 0)
-    low = 1;
-  u32 bank = (((u32)romBankHigh << 5) | low) & (romBankCount - 1);
+  u32 bank;
+  if (mbc == Mbc::Mbc3) {
+    bank = mbc3RomBank == 0 ? 1 : mbc3RomBank;
+  } else {
+    u32 low = romBankLow & 0x1F;
+    if (low == 0)
+      low = 1;
+    bank = ((u32)romBankHigh << 5) | low;
+  }
+  bank &= (romBankCount - 1);
   return bank * 0x4000u + (addr - 0x4000u);
 }
 
@@ -159,29 +172,46 @@ u8 Cartridge::readRom(u16 addr) const {
 }
 
 void Cartridge::writeRom(u16 addr, u8 value) {
-  if (mbc != Mbc::Mbc1)
-    return;
-  if (addr < 0x2000) {
-    ramEnabled = (value & 0x0F) == 0x0A;
-  } else if (addr < 0x4000) {
-    romBankLow = value & 0x1F;
-  } else if (addr < 0x6000) {
-    romBankHigh = value & 0x03;
-  } else {
-    bankMode = value & 0x01;
+  if (mbc == Mbc::Mbc1) {
+    if (addr < 0x2000) {
+      ramEnabled = (value & 0x0F) == 0x0A;
+    } else if (addr < 0x4000) {
+      romBankLow = value & 0x1F;
+    } else if (addr < 0x6000) {
+      romBankHigh = value & 0x03;
+    } else {
+      bankMode = value & 0x01;
+    }
+  } else if (mbc == Mbc::Mbc3) {
+    if (addr < 0x2000) {
+      ramEnabled = (value & 0x0F) == 0x0A; // also enables RTC registers
+    } else if (addr < 0x4000) {
+      mbc3RomBank = value & 0x7F; // full 7 bits, 0 is remapped to 1 on read
+    } else if (addr < 0x6000) {
+      mbc3RamBank = value; // 0x00-0x03 RAM bank, 0x08-0x0C RTC register
+    } else {
+      // 0x6000-0x7FFF: RTC latch. No RTC implemented, so nothing to latch.
+    }
   }
 }
 
 u32 Cartridge::ramOffset(u16 addr) const {
-  u32 bank = (mbc == Mbc::Mbc1 && bankMode == 1) ? romBankHigh : 0;
+  u32 bank;
+  if (mbc == Mbc::Mbc3)
+    bank = mbc3RamBank & 0x03;
+  else
+    bank = (mbc == Mbc::Mbc1 && bankMode == 1) ? romBankHigh : 0;
   if (ramBankCount > 0)
     bank &= (ramBankCount - 1);
   return bank * 0x2000u + (addr - 0xA000u);
 }
 
 u8 Cartridge::readRam(u16 addr) const {
-  if (!hasRam || (mbc == Mbc::Mbc1 && !ramEnabled))
+  if (!hasRam || (mbc != Mbc::None && !ramEnabled))
     return 0xFF;
+  // MBC3 RTC register select (0x08-0x0C): no RTC implemented, read back 0x00.
+  if (mbc == Mbc::Mbc3 && mbc3RamBank >= 0x08)
+    return 0x00;
   u32 off = ramOffset(addr);
   if (off < ram.size())
     return ram[off];
@@ -189,7 +219,10 @@ u8 Cartridge::readRam(u16 addr) const {
 }
 
 void Cartridge::writeRam(u16 addr, u8 value) {
-  if (!hasRam || (mbc == Mbc::Mbc1 && !ramEnabled))
+  if (!hasRam || (mbc != Mbc::None && !ramEnabled))
+    return;
+  // MBC3 RTC register select (0x08-0x0C): no RTC implemented, drop the write.
+  if (mbc == Mbc::Mbc3 && mbc3RamBank >= 0x08)
     return;
   u32 off = ramOffset(addr);
   if (off < ram.size()) {
