@@ -36,15 +36,18 @@ void Display::updateGame(const u32 *fb) {
   haveFrame = true;
 }
 
-void Display::blitGame() {
+void Display::blitGame(int topInset) {
   if (!haveFrame)
     return;
   int w, h;
   SDL_GetRendererOutputSize(ren, &w, &h);
 
-  // Integer-friendly aspect-fit: largest GB-sized rect that fits the window.
-  float scale = SDL_min((float)w / GB_W, (float)h / GB_H);
+  topInset = SDL_clamp(topInset, 0, h);
+  int availH = SDL_max(1, h - topInset);
+
+  // Integer-friendly aspect-fit: largest GB-sized rect that fits the usable area.
+  float scale = SDL_min((float)w / GB_W, (float)availH / GB_H);
   int dw = (int)(GB_W * scale), dh = (int)(GB_H * scale);
-  SDL_Rect dst{(w - dw) / 2, (h - dh) / 2, dw, dh};
+  SDL_Rect dst{(w - dw) / 2, topInset + (availH - dh) / 2, dw, dh};
   SDL_RenderCopy(ren, tex, nullptr, &dst);
 }

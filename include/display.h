@@ -27,8 +27,8 @@ public:
   void *gameTexture() const { return tex; }
 
   // Draw the game texture into the window, scaled to fit while preserving the
-  // 10:9 aspect ratio. Call between SDL_RenderClear and the ImGui render.
-  void blitGame();
+  // 10:9 aspect ratio. The optional top inset reserves space for UI chrome.
+  void blitGame(int topInset = 0);
 
 private:
   SDL_Window *win = nullptr;

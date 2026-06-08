@@ -412,6 +412,7 @@ int main(int argc, char **argv) {
     ImGui_ImplSDLRenderer2_NewFrame();
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
+    int menuBarHeight = 0;
 
     if (state == State::Splash) {
       ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -487,6 +488,7 @@ int main(int argc, char **argv) {
           ImGui::SameLine(x);
           ImGui::TextDisabled("%s", status);
         }
+        menuBarHeight = (int)ImGui::GetWindowHeight();
         ImGui::EndMainMenuBar();
       }
 
@@ -613,7 +615,7 @@ int main(int argc, char **argv) {
     ImGui::Render();
     SDL_SetRenderDrawColor(display.renderer(), 12, 14, 18, 255);
     SDL_RenderClear(display.renderer());
-    display.blitGame();
+    display.blitGame(menuBarHeight);
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(),
                                           display.renderer());
     SDL_RenderPresent(display.renderer());
