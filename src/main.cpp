@@ -310,7 +310,7 @@ int main(int argc, char **argv) {
   std::string currentRom, currentName;
   int themeIdx = 0, librarySel = 0;
   u8 buttons = 0;
-  bool paused = false, showLibrary = true, showAbout = false;
+  bool paused = false, turbo = false, showLibrary = true, showAbout = false;
   bool showImport = false;
   std::string browseDir;
 
@@ -331,10 +331,6 @@ int main(int argc, char **argv) {
     paused = false;
     showLibrary = false;
     return true;
-  };
-  auto resetGame = [&]() {
-    if (!currentRom.empty())
-      loadRom({currentRom, currentName});
   };
 
   // Boot splash timing.
@@ -372,8 +368,8 @@ int main(int argc, char **argv) {
         running = false;
       } else if (keydown && k == SDLK_p && bus) {
         paused = !paused;
-      } else if (keydown && k == SDLK_r && bus) {
-        resetGame();
+      } else if (keydown && k == SDLK_COMMA && bus) {
+        turbo = !turbo;
       } else if (bus && !showLibrary) {
         int bit = gameBit(k);
         if (bit >= 0) {
@@ -397,6 +393,12 @@ int main(int argc, char **argv) {
       while (!bus->ppu.frameReady && guard < 140000)
         guard += cpu->step();
       bus->ppu.frameReady = false;
+      if (turbo) { // second frame for 2× speed
+        guard = 0;
+        while (!bus->ppu.frameReady && guard < 140000)
+          guard += cpu->step();
+        bus->ppu.frameReady = false;
+      }
       display.updateGame(bus->ppu.framebuffer());
 
       if (audio &&
@@ -450,8 +452,7 @@ int main(int argc, char **argv) {
         }
         if (ImGui::BeginMenu("Emulation")) {
           ImGui::MenuItem("Pause", "P", &paused, (bool)bus);
-          if (ImGui::MenuItem("Reset", "R", false, (bool)bus))
-            resetGame();
+          ImGui::MenuItem("2\xc3\x97 Speed", ",", &turbo, (bool)bus);
           ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
@@ -603,7 +604,7 @@ int main(int argc, char **argv) {
         ImGui::BulletText("D-Pad: Arrow keys");
         ImGui::BulletText("A / B: Z / X");
         ImGui::BulletText("Start / Select: Enter / Backspace");
-        ImGui::BulletText("Library: Esc    Pause: P    Reset: R");
+        ImGui::BulletText("Library: Esc    Pause: P");
         ImGui::Separator();
         if (ImGui::Button("Close", ImVec2(120, 0)))
           ImGui::CloseCurrentPopup();
