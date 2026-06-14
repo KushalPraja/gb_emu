@@ -2,13 +2,22 @@
 
 An emulator for the Nintendo Game Boy written in pure C++. This is a work in progress, but the CPU is mostly complete and can run simple test ROMs.
 
+**Watch the Demo:**
+
+<p>
+  <a href="https://drive.google.com/file/d/1J76Y_s49JQinETjMuuR8-7UFh_8zIgrn/view?usp=sharing">
+    <img src="https://github.com/user-attachments/assets/24fe8c49-2806-4dd5-a6ac-22cb782a0faa" width="800" alt="Demo Video">
+  </a>
+</p>
+
+
 ## Current Status:
 
 [x] CPU (interrupts, timers, and all opcodes) \
 [x] PPU (background, window, sprites, LCD/STAT interrupts) \
 [x] APU (2 pulse, wave, noise channels with audio output) \
-[x] Input (joypad) \
-[x] Cartridges (plain 32KB + MBC1, battery RAM)
+[x] Input \
+[x] Cartridges (plain 32KB + MBC1,3,5 , battery RAM and saves)
 
 ## Resources:
 
