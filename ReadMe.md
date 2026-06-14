@@ -1,6 +1,6 @@
 # GbEmu
 
-An emulator for the Nintendo Game Boy written in pure C++. This is a work in progress, but the CPU is mostly complete and can run simple test ROMs.
+An emulator for the Nintendo Game Boy written in pure C++. 
 
 **Watch the Demo:**
 
