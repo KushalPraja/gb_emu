@@ -28,7 +28,7 @@ target_include_directories(imgui PUBLIC
   ${IMGUI_DIR} ${IMGUI_DIR}/backends ${SDL2_INCLUDE_DIRS})
 target_link_libraries(imgui PUBLIC ${SDL2_LIBRARIES})
 
-add_executable(gb_emu
+add_executable(gb_emu WIN32
   src/main.cpp
   src/cartridge.cpp
   src/ppu.cpp
